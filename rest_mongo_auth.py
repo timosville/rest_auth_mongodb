@@ -3,6 +3,7 @@ from flask_mongoengine import MongoEngine
 from flask_httpauth import HTTPBasicAuth
 from mongoengine import Document, StringField
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask import abort, request, jsonify, url_for, g
 
 app = Flask(__name__)
 
@@ -26,8 +27,28 @@ class User(Document):
     def hash_password(self, password):
         self.password_hash = generate_password_hash(password)
 
-    def verify_password(self, password):
-        return check_password_hash(password, self.password_hash)
+@app.route('/api/users', methods = ['POST'])
+def new_user():
+    username = request.json.get('username')
+    password = request.json.get('password')
+    if username is None or password is None:
+        abort(400)
+    try:
+        User.objects.get(username=username)
+        abort(400)
+    except User.DoesNotExist:
+        user = User(username=username)
+        user.hash_password(password)
+        user.save()
+    return jsonify({'username': user.username}), 201, {'Location': url_for('get_user', id=user.id, _external=True)}
+
+
+@app.route('/api/users/<id>')
+def get_user(id):
+    user = User.objects.get(id)
+    if not user:
+        abort(400)
+    return jsonify({'username': user.username})
 
 
 if __name__ == '__main__':
