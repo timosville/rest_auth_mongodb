@@ -1,9 +1,11 @@
 from flask import Flask
 from flask_mongoengine import MongoEngine
-from flask_httpauth import HTTPBasicAuth
+from flask_httpauth import HTTPTokenAuth
 from mongoengine import Document, StringField
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask import abort, request, jsonify, url_for
+from werkzeug.security import generate_password_hash
+from flask import abort, request, jsonify, url_for, g
+from itsdangerous import TimedJSONWebSignatureSerializer as JWT
+
 
 app = Flask(__name__)
 
@@ -16,8 +18,9 @@ MONGODB_SETTINGS = {'db': DB_NAME,
 
 app.config['SECRET_KEY'] = SECRET_KEY
 app.config['MONGODB_SETTINGS'] = MONGODB_SETTINGS
-auth = HTTPBasicAuth()
+auth = HTTPTokenAuth('Bearer')
 db = MongoEngine(app)
+jwt = JWT(app.config['SECRET_KEY'], expires_in=3600)
 
 
 class User(Document):
@@ -27,14 +30,21 @@ class User(Document):
     def hash_password(self, password):
         self.password_hash = generate_password_hash(password)
 
+for user in User.objects:
+    token = jwt.dumps({'username': user.username})
+    print('*** token for {}: {}\n'.format(user, token))
 
-@auth.verify_password
-def verify_password(username, password):
+
+@auth.verify_token
+def verify_token(token):
     try:
-        user = User.objects.get(username=username)
-        return check_password_hash(user.password_hash, password)
-    except User.DoesNotExist:
+        data = jwt.loads(token)
+    except:
         return False
+    if 'username' in data:
+        return True
+    return False
+
 
 
 @app.route('/api/users', methods=['POST'])
@@ -65,6 +75,12 @@ def get_user(id):
 @auth.login_required
 def get_resource():
     return jsonify({'data': 'Hello, {}!'.format(auth.username())})
+
+
+@app.route('/api/token/test')
+@auth.login_required
+def token_auth_test():
+    return 'It works!'
 
 
 if __name__ == '__main__':
