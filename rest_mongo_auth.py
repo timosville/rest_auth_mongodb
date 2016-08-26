@@ -3,7 +3,7 @@ from flask_mongoengine import MongoEngine
 from flask_httpauth import HTTPTokenAuth
 from mongoengine import Document, StringField
 from werkzeug.security import generate_password_hash
-from flask import abort, request, jsonify, url_for, g
+from flask import abort, request, jsonify, url_for
 from itsdangerous import TimedJSONWebSignatureSerializer as JWT
 
 
@@ -44,7 +44,6 @@ def verify_token(token):
     if 'username' in data:
         return True
     return False
-
 
 
 @app.route('/api/users', methods=['POST'])
