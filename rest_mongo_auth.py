@@ -3,7 +3,9 @@ from flask_mongoengine import MongoEngine
 from flask_httpauth import HTTPBasicAuth
 from mongoengine import Document, StringField
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask import abort, request, jsonify, url_for
+from flask import abort, request, jsonify, url_for, g
+from itsdangerous import (TimedJSONWebSignatureSerializer
+                          as Serializer, BadSignature, SignatureExpired)
 
 app = Flask(__name__)
 
@@ -27,14 +29,37 @@ class User(Document):
     def hash_password(self, password):
         self.password_hash = generate_password_hash(password)
 
+    def generate_auth_token(self, expiration=600):
+        s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
+        return s.dumps({'id': self.id})
+
+    @staticmethod
+    def verify_auth_token(token):
+        s = Serializer(app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token)
+        except SignatureExpired:
+            return None  # valid token, but expired
+        except BadSignature:
+            return None  # invalid token
+        user = User.objects.get(data['id'])
+        return user
+
 
 @auth.verify_password
-def verify_password(username, password):
-    try:
-        user = User.objects.get(username=username)
-        return check_password_hash(user.password_hash, password)
-    except User.DoesNotExist:
-        return False
+def verify_password(username_or_token, password):
+    user = User.verify_auth_token(username_or_token)
+    if not user:
+        try:
+            user = User.objects.get(username=username_or_token)
+            if check_password_hash(user.password_hash, password) is True:
+                user['id'] = str(user['id'])
+                g.user = user
+                return g.user
+            else:
+                return False
+        except User.DoesNotExist:
+            return False
 
 
 @app.route('/api/users', methods=['POST'])
@@ -66,6 +91,12 @@ def get_user(id):
 def get_resource():
     return jsonify({'data': 'Hello, {}!'.format(auth.username())})
 
+
+@app.route('/api/token')
+@auth.login_required
+def get_auth_token():
+    token = g.user.generate_auth_token()
+    return jsonify({'token': token.decode('ascii')})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0',
