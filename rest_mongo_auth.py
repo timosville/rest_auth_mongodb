@@ -89,7 +89,7 @@ def get_user(id):
 @app.route('/api/resource')
 @auth.login_required
 def get_resource():
-    return jsonify({'data': 'Hello, {}!'.format(auth.username())})
+    return jsonify({'data': 'Hello, {}!'.format(g.user.username)})
 
 
 @app.route('/api/token')
